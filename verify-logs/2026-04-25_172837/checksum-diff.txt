@@ -1,0 +1,9 @@
+--- /home/carl/P/file-system-scripts/verify-logs/2026-04-25_172837/src-files.sha256	2026-04-25 17:28:37.792233621 -0700
++++ /home/carl/P/file-system-scripts/verify-logs/2026-04-25_172837/dst-files.sha256	2026-04-25 17:28:37.796233491 -0700
+@@ -1,4 +1,4 @@
++257d98938e513383fc41b08d67fa5eb161001f5b955471f89986ee4b81fd8a80  ./mismatch.txt
+ 484a45a481c63a54866114cffbe531f655063c329ba0b120fe905c7c89066fb5  ./sub-b.txt
+-a2c9c1dfe50da451b6e45da67d5996ced95ceb930d105d31a95d3c2cd54fd187  ./only-src.txt
+-c4d0dec7fa9d235ee75ea143b73e991f839ef76db344901fae55b3f3a7263707  ./mismatch.txt
++80b85eb82ac639a4820afcbae77d49ac7429f99d517ed2f8033ad229c94f6b7d  ./only-dest.txt
+ fbf25470d6d556d613b2a57d09cbfa5c7c3ec4295fef2bf617c36e0d6373c9a7  ./a.txt

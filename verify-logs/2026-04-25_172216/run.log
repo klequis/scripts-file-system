@@ -1,0 +1,10 @@
+VERIFY START: Sat Apr 25 05:22:16 PM PDT 2026
+SRC: ./src
+DST: ./dest
+Computing SHA-256 on source...
+Computing SHA-256 on destination...
+Comparing lists...
+RESULT: Differences found. See /home/carl/P/file-system-scripts/verify-logs/2026-04-25_172216/checksum-diff.txt
+diff summary (lines): src-only: 0, dst-only: 0, other: 4
+Logs saved in: /home/carl/P/file-system-scripts/verify-logs/2026-04-25_172216
+VERIFY END: Sat Apr 25 05:22:16 PM PDT 2026

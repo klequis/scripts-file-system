@@ -1,0 +1,2 @@
+sourceFile,distFile,match
+"./mismatch.txt","./mismatch.txt",false
