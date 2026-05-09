@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+# ex: tmux new-session -s verify 'bash ~/P/file-system-scripts/verify-copies.sh /run/media/carl/A-2 /mnt/storage; read'
+
 if [ "$#" -ne 2 ]; then
   echo "Usage: $0 /path/to/nvme-copy /path/to/hdd-copy"
   exit 2
@@ -19,11 +21,21 @@ echo "DST: $DST" | tee -a "$LOGDIR/run.log"
 
 # 1) Source file hashes (relative paths), handle weird names safely
 echo "Computing SHA-256 on source..." | tee -a "$LOGDIR/run.log"
-( cd "$SRC" && find . -type f -print0 | xargs -0 sha256sum ) | sort > "$LOGDIR/src-files.sha256"
+SRC_TOTAL=$(find "$SRC" -type f 2>/dev/null | wc -l)
+( cd "$SRC" && find . -type f -print0 | xargs -0 sha256sum ) \
+  | tee >(awk -v total="$SRC_TOTAL" '
+      { count++; printf "\rHashed %d / %d files...", count, total > "/dev/stderr" }
+    ' ; printf "\n" >&2) \
+  | sort > "$LOGDIR/src-files.sha256"
 
 # 2) Destination file hashes
 echo "Computing SHA-256 on destination..." | tee -a "$LOGDIR/run.log"
-( cd "$DST" && find . -type f -print0 | xargs -0 sha256sum ) | sort > "$LOGDIR/dst-files.sha256"
+DST_TOTAL=$(find "$DST" -type f 2>/dev/null | wc -l)
+( cd "$DST" && find . -type f -print0 | xargs -0 sha256sum ) \
+  | tee >(awk -v total="$DST_TOTAL" '
+      { count++; printf "\rHashed %d / %d files...", count, total > "/dev/stderr" }
+    ' ; printf "\n" >&2) \
+  | sort > "$LOGDIR/dst-files.sha256"
 
 # 3) Compare
 echo "Comparing lists..." | tee -a "$LOGDIR/run.log"

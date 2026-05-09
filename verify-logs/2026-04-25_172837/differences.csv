@@ -1,4 +1,0 @@
-sourceFile,distFile,match
-"./mismatch.txt","./mismatch.txt",false
-"","./only-dest.txt",false
-"./only-src.txt","",false
