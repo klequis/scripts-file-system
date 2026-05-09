@@ -1,13 +1,15 @@
 'use strict';
 
 // generate-manifest.js
-// Reads test-output-5.csv, writes copy-manifest.csv.
+// Reads test-output-6.csv, writes copy-manifest.csv.
 // No file I/O on the HDD — safe to run without the drive mounted.
 //
 // Destination structure:
-//   new/YYYY/YYYY-MM-DD/new_filename          (single bucket for that date)
-//   new/YYYY/YYYY-MM-DD/HH:MM:SS/new_filename (date has >500 MB, time buckets)
-//   new/unknown/new_filename                  (no resolvable date)
+//   new/photos/YYYY/YYYY-MM-DD/new_filename
+//   new/photos/YYYY/YYYY-MM-DD/HH:MM:SS/new_filename  (date >500 MB)
+//   new/photos/unknown/new_filename
+//   new/videos/YYYY/YYYY-MM-DD/...
+//   new/other/new_filename   (flat — docs, zips, etc.)
 //
 // Filename convention:
 //   stem_HH-MM-SS.ext         (has time)
@@ -18,12 +20,28 @@
 const fs   = require('fs');
 const path = require('path');
 
-const INPUT_CSV  = path.join(__dirname, 'test-output-5.csv');
+const INPUT_CSV  = path.join(__dirname, 'test-output-6.csv');
 const OUTPUT_CSV = path.join(__dirname, 'copy-manifest.csv');
 
-const SOURCE_ROOT = '/run/media/carl/A1-2026-05/orig';
 const DEST_ROOT   = '/run/media/carl/A1-2026-05/new';
 const BUCKET_MB   = 500;
+
+const PHOTO_EXTENSIONS = new Set([
+  '.nef', '.jpg', '.jpeg', '.jpe', '.tif', '.tiff', '.dng',
+  '.bmp', '.png', '.gif', '.psd', '.psp', '.webp', '.heic',
+  '.rw2', '.cr2', '.cr3', '.arw', '.orf', '.pef', '.srw',
+]);
+
+const VIDEO_EXTENSIONS = new Set([
+  '.mp4', '.mov', '.avi', '.3g2', '.nar',
+]);
+
+function categoryRoot(fileName) {
+  const ext = path.extname(fileName).toLowerCase();
+  if (PHOTO_EXTENSIONS.has(ext)) return path.join(DEST_ROOT, 'photos');
+  if (VIDEO_EXTENSIONS.has(ext)) return path.join(DEST_ROOT, 'videos');
+  return path.join(DEST_ROOT, 'other');
+}
 
 // ---------------------------------------------------------------------------
 // CSV helpers
@@ -73,7 +91,7 @@ const lines = fs.readFileSync(INPUT_CSV, 'utf8').split('\n');
 const header = parseRow(lines[0]);
 
 // Column indices (0-based)
-// file_id, folder_name, file_name, full_path, date, date_source, time, sidecar_file, size_mb
+// file_id, folder_name, file_name, full_path, date, date_source, time, sidecar_file, wav_file, size_mb
 const COL = {};
 header.forEach((h, i) => { COL[h.trim()] = i; });
 
@@ -91,6 +109,7 @@ for (let i = 1; i < lines.length; i++) {
     date_source:  f[COL.date_source],
     time:         f[COL.time] || '',
     sidecar_file: f[COL.sidecar_file] || '',
+    wav_file:     f[COL.wav_file] || '',
     size_mb:      f[COL.size_mb] || '0',
   });
 }
@@ -109,76 +128,83 @@ rows.forEach((r, i) => idToIdx.set(r.file_id, i));
 // Bucket logic: same as group-by-date.js — sort by time, greedy 500 MB buckets
 // ---------------------------------------------------------------------------
 
-// Group rows by date (skip sidecars for now — they follow their image)
-const byDate = new Map(); // date -> [{idx, size_mb, time}]
+// Group non-sidecar rows by (categoryRoot, date) for bucket calculation.
+// 'other' files are assigned flat immediately.
+const idxToFolder = new Map();
+const byCatDate = new Map(); // catRoot -> Map(date -> [{idx, size_mb, time}])
+
 for (let i = 0; i < rows.length; i++) {
   const r = rows[i];
-  if (r.sidecar_file) continue;            // handled after image placement
-  const date = r.date || 'unknown';
-  if (!byDate.has(date)) byDate.set(date, []);
-  byDate.get(date).push({ idx: i, size_mb: parseFloat(r.size_mb) || 0, time: r.time });
-}
+  if (r.sidecar_file || r.wav_file) continue;  // handled after image placement
 
-// For each date, assign a dest folder path (string, no trailing slash)
-// Returns: Map<idx, destFolder>
-const idxToFolder = new Map();
+  const catRoot = categoryRoot(r.file_name);
 
-for (const [date, entries] of byDate) {
-  if (date === 'unknown') {
-    for (const e of entries) idxToFolder.set(e.idx, path.join(DEST_ROOT, 'unknown'));
+  // 'other' files go flat — no date sub-folders
+  if (catRoot === path.join(DEST_ROOT, 'other')) {
+    idxToFolder.set(i, catRoot);
     continue;
   }
 
-  const year = date.slice(0, 4);
-  const datePath = path.join(DEST_ROOT, year, date);
-  const totalMb = entries.reduce((s, e) => s + e.size_mb, 0);
+  const date = r.date || 'unknown';
+  if (!byCatDate.has(catRoot)) byCatDate.set(catRoot, new Map());
+  const dateMap = byCatDate.get(catRoot);
+  if (!dateMap.has(date)) dateMap.set(date, []);
+  dateMap.get(date).push({ idx: i, size_mb: parseFloat(r.size_mb) || 0, time: r.time });
+}
 
-  if (totalMb <= BUCKET_MB) {
-    for (const e of entries) idxToFolder.set(e.idx, datePath);
-  } else {
-    // Sort by time, then greedy bucket split
-    const sorted = [...entries].sort((a, b) => a.time.localeCompare(b.time));
-    let bucketStart = 0;
-    let bucketMb = 0;
-    let buckets = []; // [{startTime, entries:[]}]
-    let cur = { startTime: sorted[0].time || '00:00:00', entries: [] };
-    for (const e of sorted) {
-      cur.entries.push(e);
-      bucketMb += e.size_mb;
-      if (bucketMb >= BUCKET_MB) {
-        buckets.push(cur);
-        cur = { startTime: null, entries: [] };
-        bucketMb = 0;
-      }
-    }
-    if (cur.entries.length) buckets.push(cur);
-
-    // Assign startTime for any bucket that didn't get one yet
-    for (let b = 0; b < buckets.length; b++) {
-      if (!buckets[b].startTime) {
-        buckets[b].startTime = buckets[b].entries[0].time || '00:00:00';
-      }
+// Assign dest folders for photos and videos using date + 500 MB bucket logic
+for (const [catRoot, dateMap] of byCatDate) {
+  for (const [date, entries] of dateMap) {
+    if (date === 'unknown') {
+      for (const e of entries) idxToFolder.set(e.idx, path.join(catRoot, 'unknown'));
+      continue;
     }
 
-    for (const bucket of buckets) {
-      const folderName = path.join(datePath, bucket.startTime);
-      for (const e of bucket.entries) idxToFolder.set(e.idx, folderName);
+    const year = date.slice(0, 4);
+    const datePath = path.join(catRoot, year, date);
+    const totalMb = entries.reduce((s, e) => s + e.size_mb, 0);
+
+    if (totalMb <= BUCKET_MB) {
+      for (const e of entries) idxToFolder.set(e.idx, datePath);
+    } else {
+      // Sort by time, then greedy bucket split
+      const sorted = [...entries].sort((a, b) => a.time.localeCompare(b.time));
+      let bucketMb = 0;
+      let cur = { startTime: sorted[0].time || '00:00:00', entries: [] };
+      const buckets = [];
+      for (const e of sorted) {
+        cur.entries.push(e);
+        bucketMb += e.size_mb;
+        if (bucketMb >= BUCKET_MB) {
+          buckets.push(cur);
+          cur = { startTime: null, entries: [] };
+          bucketMb = 0;
+        }
+      }
+      if (cur.entries.length) buckets.push(cur);
+
+      for (const bucket of buckets) {
+        if (!bucket.startTime) bucket.startTime = bucket.entries[0].time || '00:00:00';
+        const folderName = path.join(datePath, bucket.startTime);
+        for (const e of bucket.entries) idxToFolder.set(e.idx, folderName);
+      }
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Assign dest folder for sidecars (same folder as their image)
+// Assign dest folder for sidecars and wav audio notes (same folder as their image)
 // ---------------------------------------------------------------------------
 
 for (let i = 0; i < rows.length; i++) {
   const r = rows[i];
-  if (!r.sidecar_file) continue;
-  const imageIdx = idToIdx.get(r.sidecar_file);
+  const parentId = r.sidecar_file || r.wav_file;
+  if (!parentId) continue;
+  const imageIdx = idToIdx.get(parentId);
   if (imageIdx !== undefined && idxToFolder.has(imageIdx)) {
     idxToFolder.set(i, idxToFolder.get(imageIdx));
   } else {
-    idxToFolder.set(i, path.join(DEST_ROOT, 'unknown'));
+    idxToFolder.set(i, path.join(DEST_ROOT, 'photos', 'unknown'));
   }
 }
 
@@ -229,15 +255,8 @@ for (const i of order) {
   const folder = idxToFolder.get(i) || path.join(DEST_ROOT, 'unknown');
   const newFilename = makeNewFilename(r.file_name, r.time, folder);
 
-  // Derive orig_path: replace drive root prefix with SOURCE_ROOT
-  // full_path in CSV is absolute path at scan time; source files are now under orig/
-  // The CSV full_path looks like /run/media/carl/A1-2026-05/...
-  // Under orig/ the same relative path is preserved.
-  const driveRoot = '/run/media/carl/A1-2026-05';
-  const relPath = r.full_path.startsWith(driveRoot)
-    ? r.full_path.slice(driveRoot.length)   // e.g. /Photos/2007/...
-    : '/' + r.full_path;
-  const origPath = path.join(SOURCE_ROOT, relPath);
+  // full_path from analyze-pictures.js is already the correct absolute source path
+  const origPath = r.full_path;
   const newPath  = path.join(folder, newFilename);
 
   const sizeBytes = Math.round(parseFloat(r.size_mb) * 1048576);
@@ -268,15 +287,22 @@ fs.writeFileSync(OUTPUT_CSV, outLines.join('\n') + '\n');
 // Summary
 // ---------------------------------------------------------------------------
 
-let renamed = 0, unknownDest = 0;
+let renamed = 0;
+const catCounts = { photos: 0, videos: 0, other: 0, unknown: 0 };
 for (const m of manifest) {
   if (m.new_filename !== m.orig_filename) renamed++;
-  if (m.new_path.includes('/unknown/')) unknownDest++;
+  if (m.new_path.includes('/photos/'))       catCounts.photos++;
+  else if (m.new_path.includes('/videos/'))  catCounts.videos++;
+  else if (m.new_path.includes('/other/'))   catCounts.other++;
+  if (m.new_path.includes('/unknown/'))      catCounts.unknown++;
 }
 
 console.log(`\nManifest written: ${OUTPUT_CSV}`);
 console.log(`  Total rows:      ${manifest.length}`);
+console.log(`  → photos/:       ${catCounts.photos}`);
+console.log(`  → videos/:       ${catCounts.videos}`);
+console.log(`  → other/:        ${catCounts.other}`);
+console.log(`  → */unknown/:    ${catCounts.unknown}`);
 console.log(`  Renamed (time):  ${renamed}`);
 console.log(`  Collisions:      ${collisionCount}`);
-console.log(`  → unknown/:      ${unknownDest}`);
 console.log('\nReview copy-manifest.csv before running copy-by-date.js');

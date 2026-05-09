@@ -15,14 +15,14 @@ const exifr = require('exifr');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const ROOT   = '/run/media/carl/A1-2026-05';
+const ROOT   = '/run/media/carl/A1-2026-05/orig';
 const DEVICE = '/dev/sda';
 
 const EXCLUDED = new Set([
   path.join(ROOT, '2022.sophie-slide-show'),
   path.join(ROOT, 'daniel'),
   path.join(ROOT, 'dev-images'),
-  path.join(ROOT, 'digikam-db'),
+  path.join(ROOT, 'of-daniel.tmp'),
   path.join(ROOT, 'Scanned Pictures'),
 ]);
 
@@ -37,7 +37,7 @@ const EXCLUDED_EXTENSIONS = new Set([
   '.tst', '.bridgesort', '.lnk', '.trashinfo', '.uuid',
 ]);
 
-const EXPECTED_TOTAL = 41671;
+const EXPECTED_TOTAL = 41570;
 
 const WORK_MS        = 5 * 60 * 1000;
 const TEMP_CHECK_MS  = 30 * 1000;
@@ -224,7 +224,7 @@ function collectFiles(dir, results, stats) {
 // ── CSV ───────────────────────────────────────────────────────────────────────
 
 const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
-const CSV_HEADER = 'file_id,folder_name,file_name,full_path,date,date_source,time,sidecar_file,size_mb\n';
+const CSV_HEADER = 'file_id,folder_name,file_name,full_path,date,date_source,time,sidecar_file,wav_file,size_mb\n';
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -277,6 +277,19 @@ async function main() {
     imageByBaseName.set(key, i + 1); // file_id is 1-based
   }
 
+  // Map: dir::dscDigits → file_id  (for .wav audio note pairing)
+  // WAV files are named like 20080704105826_DSC3264.WAV and pair with DSC_3264.NEF
+  const nefByDscNumber = new Map();
+  for (let i = 0; i < files.length; i++) {
+    const fp  = files[i];
+    const ext = path.extname(fp).toLowerCase();
+    if (ext !== '.nef') continue;
+    const dir  = path.dirname(fp);
+    const base = path.basename(fp, ext);
+    const m = base.match(/DSC_?(\d+)/i);
+    if (m) nefByDscNumber.set(`${dir}::${m[1]}`, i + 1);
+  }
+
   // Phase 2: determine start index from checkpoint
   let startIndex = 0;
   if (fs.existsSync(CHECKPOINT)) {
@@ -325,7 +338,7 @@ async function main() {
       const folderName = path.basename(path.dirname(filePath));
       const ext        = path.extname(filePath).toLowerCase();
 
-      let date, source, time = '', sidecarFile = '', sizeMb = '';
+      let date, source, time = '', sidecarFile = '', wavFile = '', sizeMb = '';
       try { sizeMb = (fs.statSync(filePath).size / 1048576).toFixed(3); } catch { /* unreadable */ }
 
       // Resolve sidecar association (.xmp, .nksc)
@@ -348,6 +361,17 @@ async function main() {
           if (imageByBaseName.has(key)) {
             sidecarFile = String(imageByBaseName.get(key));
           }
+        }
+      }
+
+      // Resolve .wav audio note association (paired with NEF by DSC#### number)
+      if (ext === '.wav') {
+        const dir  = path.dirname(filePath);
+        const base = path.basename(filePath, ext);
+        const m = base.match(/DSC_?(\d+)/i);
+        if (m) {
+          const key = `${dir}::${m[1]}`;
+          if (nefByDscNumber.has(key)) wavFile = String(nefByDscNumber.get(key));
         }
       }
 
@@ -380,7 +404,7 @@ async function main() {
 
       sourceCounts[source] = (sourceCounts[source] || 0) + 1;
       fs.writeSync(outFd,
-        [fileId, esc(folderName), esc(fileName), esc(filePath), esc(date), esc(source), esc(time), esc(sidecarFile), sizeMb].join(',') + '\n'
+        [fileId, esc(folderName), esc(fileName), esc(filePath), esc(date), esc(source), esc(time), esc(sidecarFile), esc(wavFile), sizeMb].join(',') + '\n'
       );
       fs.writeFileSync(CHECKPOINT, String(i));
 
