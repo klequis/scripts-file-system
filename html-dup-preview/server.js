@@ -18,7 +18,7 @@ const NEF_THUMB_MAX = '1200';   // max dimension passed to the binary
 
 const PORT            = 3000;
 const CSV_PATH        = process.argv[2] || path.join(__dirname, '../dedup-images/dupes-report.csv');
-const GROUPS_PER_PAGE = 20;
+const GROUPS_PER_PAGE = 1;
 const DELETION_LOG    = path.join(__dirname, 'deletion-log.txt');
 
 const DISPLAYABLE = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']);
@@ -86,6 +86,8 @@ for (const row of rows) {
   if (!isDeletable(row.full_path)) continue;
   // Skip hash mismatches — content differs, so they are not duplicates
   if (row.hash_confirmed === 'no') continue;
+  // Skip files that no longer exist on disk (already moved to trash)
+  if (!fs.existsSync(row.full_path)) continue;
 
   // Generate id if column is missing
   if (!row.dup_file_id) row.dup_file_id = `autoId${String(++autoIdSeq).padStart(4, '0')}`;
@@ -217,7 +219,7 @@ function renderPage(pageNum, pageGroups) {
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<title>Dup Review — Page ${pageNum} / ${totalPages}</title>
+<title>Dup Review — ${pageNum} / ${totalPages}</title>
 <style>${CSS}</style>
 </head>
 <body>
@@ -225,6 +227,14 @@ ${nav}
 <div id="groups">${body}</div>
 ${nav}
 <script>
+const PAGE = ${pageNum};
+const TOTAL_PAGES = ${totalPages};
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'PageDown' && PAGE < TOTAL_PAGES) { e.preventDefault(); location.href = '/page/' + (PAGE + 1); }
+  if (e.key === 'PageUp'   && PAGE > 1)            { e.preventDefault(); location.href = '/page/' + (PAGE - 1); }
+});
+
 async function delFile(id, name) {
   const card = document.getElementById('card-' + id);
   const btn  = card.querySelector('.del-btn');
