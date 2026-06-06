@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Compare Documents with Meld
+Comment=Mount A1-2026-05 if needed and open Documents in Meld
+Exec=/home/carl/P/file-system-scripts/compare-documents-with-meld/compare.js
+Terminal=true
+Icon=meld
+Categories=Utility;

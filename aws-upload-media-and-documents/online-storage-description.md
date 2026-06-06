@@ -12,9 +12,10 @@
 - **Documents** (financial + sensitive): ~20 GB (5%) — frequent updates to a small subset
 
 ### Bucket structure
+- Region: `us-east-1`
 - Two separate buckets:
-  - `*-media` — pictures & videos
-  - `*-documents` — financial + sensitive data
+  - `media-klequis-us-east-1` — pictures & videos
+  - `documents-klequis-us-east-1` — financial + sensitive data
 
 ### Upload tool
 - **rclone** — resumable, supports `--bwlimit`, handles Intelligent-Tiering storage class
