@@ -1,5 +1,8 @@
 # Various Info for S3-Auto-Upload
 
+> implementation-plan.md has additional details that may be useful
+> However, information in this doc supercedes information in implementation-plan.md wherever there is conflicting information.
+
 ## Overview
 - **Media bucket**: `media-klequis-us-east-1` ← `/run/media/carl/A1-2026-05/Media`
 - **Documents bucket**: `documents-klequis-us-east-1` ← `/run/media/carl/A1-2026-05/Documents`
