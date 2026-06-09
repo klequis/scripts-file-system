@@ -4,6 +4,11 @@
 
 ## Commands
 
+- Destination: s3-klequis:media-klequis-us-east-1/
+  - puts things in the root of the booket
+- Destination: s3-klequis:media-klequis-us-east-1/Media
+  - puts things in a folder (really just a prefix) named `Media/`
+
 ### Copy new and changed files to S3
 
 ```
