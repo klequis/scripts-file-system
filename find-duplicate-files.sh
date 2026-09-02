@@ -3,9 +3,7 @@ set -euo pipefail
 
 # find-duplicate-files.sh
 # Usage: ./find-duplicate-files.sh --dir /path/to/search --ext jpg png nef [--skip-archives]
-# Output: duplicates_<timestamp>.csv next to this script
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Output: duplicates_<timestamp>.csv in the top-level scanned directory
 
 # Archive extensions excluded by --skip-archives
 ARCHIVE_EXTENSIONS=(tar tgz gz bz2 xz zst lz4 lzma tbz2 txz zip 7z rar cab iso img dmg)
@@ -56,7 +54,11 @@ done
 command -v jdupes &>/dev/null || { echo "Error: jdupes is not installed"; exit 1; }
 
 TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
-OUTPUT="$SCRIPT_DIR/duplicates_${TIMESTAMP}.csv"
+OUTPUT_DIR="${DIRS[0]%/}"
+if [[ ${#DIRS[@]} -gt 1 ]]; then
+    echo "Note: multiple --dir values provided; writing output to first directory: $OUTPUT_DIR"
+fi
+OUTPUT="$OUTPUT_DIR/duplicates_${TIMESTAMP}.csv"
 
 # Build find expression for extensions
 FIND_ARGS=()
