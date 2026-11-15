@@ -10,6 +10,7 @@ A hodpodge of scripts to work with the file system on a Linux computer
 
 | Script | Description |
 |---|---|
+| [check-repos-clean.sh](check-repos-clean.sh) | Check every git repo under `~/P` and report any with uncommitted changes, stashes, or branches not pushed |
 | [find-duplicate-files.sh](find-duplicate-files.sh) | Walk a directory and output a CSV of duplicate files grouped by content hash |
 | [rsync-copy.sh](rsync-copy.sh) | Copy files from a source to a destination with rsync, logging to a timestamped log dir |
 | [verify-copies.sh](verify-copies.sh) | SHA-256 verify that two directory trees are identical |
